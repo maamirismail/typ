@@ -1,0 +1,219 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\emergencystretch=2em
+
+\title{Mesh-Based Quick Sorting:\\Cuboid Comparison Networks and a Reversible Quantum Median Circuit}
+\author{Muhammad Aamir Ismail \\
+Degree: Computer Science\\
+Supervisor: Dr Richard Jiang\\
+Third year project}
+
+
+\begin{document}
+\maketitle
+
+%------------------------------------------------------------
+\begin{abstract}
+Sorting and selection are foundational computing tasks, and Hoare's Quicksort and Quickselect remain the standard sequential tools for them~\cite{hoare62,hoare61}. This project studies a more geometric, parallel view of the same problems: elements are placed on the vertices of an $n\times n\times n$ cuboid and are rearranged only by nearest-neighbour compare--exchange operations, following the supervisor's manuscript on cuboid comparison networks~\cite{jiang}. That work shows that local rearrangement on a cuboid does not by itself give a median: in the noiseless case, absorbing configurations can leave the position of the median uncertain over a region of linear size, so any fixed region guaranteed to contain it must have $\Omega(N)$ positions and a thin central slab cannot do so.
+
+The project has two parts. First, I will implement a classical reference for selection and the correct three-comparator median network, test them exhaustively, and reproduce the manuscript's $3\times3\times3$ counterexample showing that a central plane can miss the median. Second, following the supervisor's staged guidance~\cite{guide}, I will extend towards quantum computing by building and verifying a reversible, ancilla-clean circuit that computes an order statistic (initially the median of three 2-bit integers) and measuring its resource cost under restricted connectivity. The expected outcome is a verified quantum selection oracle, a reproducible resource study, and a clear account of what is and is not established.
+\end{abstract}
+
+%------------------------------------------------------------
+\section{Introduction}
+
+Comparison-based sorting arranges a whole data set in order, whereas selection finds a single rank such as the median. The two are closely related: Quicksort and Quickselect both rest on the same pivot-partition step. The distinction matters for parallel computing: a fixed network of compare--exchange operations (a \emph{sorting network}) can be run in parallel, but a network that only partly orders the data does not necessarily reveal any particular order statistic.
+
+Two terms are used throughout this proposal.
+\begin{itemize}
+  \item \textbf{Cuboid comparison network:} $N=n^3$ elements are placed one per vertex of a three-dimensional grid. Each iteration applies compare--exchange operations along edges in the $i$, $j$ and $k$ directions. Within each axis, edges are split into odd and even parity matchings so that operations in one subround never share an element~\cite{jiang}.
+  \item \textbf{Order statistic / median:} The $k$-th smallest element. For even $N$ this project uses the lower median, $k=\lceil N/2\rceil$.
+\end{itemize}
+
+The focus is the \emph{simplest case} identified by the supervisor: sorting and selection on a cuboid geometry, then a step-by-step extension towards a quantum (reversible-circuit) implementation. The project description also mentions QAOA/QUBO approaches; following the supervisor's guidance, this project takes the reversible-circuit route instead.
+
+\paragraph{Scope.} The manuscript's main model has noisy comparators, each answering correctly with probability $1/2+\varepsilon$~\cite{jiang}. That comparator noise is out of scope here: I work in the noiseless setting throughout and do not model quantum gate noise (a different phenomenon, which the guide treats as an optional later stage). The manuscript's formal results concern classical comparisons only, so the quantum part needs its own circuit model and correctness argument, which is part of the work.
+
+%------------------------------------------------------------
+\section{Motivation}
+
+Parallel and restricted-connectivity hardware, including current quantum processors, can only perform operations between neighbouring elements, so understanding what local compare--exchange schedules can and cannot achieve is practically relevant. The cuboid manuscript shows that local ordering alone does not locate a median, which leaves an open question about what additional structure is needed.
+
+A coherent order-statistic oracle is a building block for larger quantum computations that must pick out a rank (such as a median) from data held in superposition without measuring it. Such an oracle is only reusable if it leaves no garbage behind, since leftover workspace stays entangled with the data and spoils later interference; this is why the project insists on a \emph{clean} oracle~\cite{guide}. Reversible sorting is already used for data movement in distributed quantum computing~\cite{beals}, but a verified, ancilla-clean order-statistic circuit evaluated under restricted connectivity is a natural next building block. The project gives a concrete, checkable route from a classical result to a quantum implementation, and builds skills in algorithm analysis, reversible circuit design and reproducible experimentation.
+
+%------------------------------------------------------------
+\section{Background and Related Work}
+
+\paragraph{Classical selection and sorting.}
+Hoare's Quicksort and Find (Quickselect) use a pivot to partition data and recurse on the relevant side, giving fast expected performance~\cite{hoare62,hoare61}. The BFPRT algorithm gives a deterministic worst-case linear bound for selection~\cite{bfprt}. These algorithms are sequential and adaptive: later comparisons depend on earlier outcomes. This makes them awkward on restricted-connectivity parallel hardware, where \emph{data-oblivious} schedules (fixed comparator positions) are preferred. Batcher's networks and odd--even transposition sort are such schedules~\cite{batcher,knuth,habermann}. Mesh sorting algorithms show that the communication graph and output ordering convention are part of the algorithm~\cite{leighton}.
+
+\paragraph{The cuboid manuscript.}
+Jiang~\cite{jiang} analyses a sampled nearest-neighbour schedule on the cuboid. The results relevant here are: (i)~exact work and depth accounting (expected work $3qTn^2(n-1)$, at most $6T$ parallel rounds; Theorem~2); (ii)~in the noiseless case the absorbing configurations are exactly the coordinatewise-increasing arrays (Proposition~4); (iii)~the rank of the element at a position $u$ is only constrained to an interval $[L(u),U(u)]$ (Theorem~5), which for central positions of a cube has width linear in $N$, so no fixed region of $o(N)$ positions can universally contain the median (Proposition~6); and (iv)~a conservative baseline using a serpentine path and odd--even transposition sort does solve selection, but at poor cost (Theorem~9). The manuscript states carefully what is \emph{not} proved: the schedule is not shown to be a selector, and the quantum link is architectural motivation only.
+
+\paragraph{Quantum angle.}
+Beals et al.\ use reversible sorting networks for data movement on restricted interaction graphs~\cite{beals}. Berry et al.\ also use reversible sorting and note that comparison information must be retained to keep the operation reversible~\cite{berry}. A classical compare--exchange is not reversible, because $(a,b)$ and $(b,a)$ both map to the same sorted pair. A reversible version must store a flag, and a clean oracle must later uncompute it. The supervisor's guide~\cite{guide} proposes a compute--copy--uncompute construction for a median oracle, which is a well-defined and testable engineering target.
+
+\paragraph{Why ordering primitives still matter.}
+Recent work showing that the sorting bottleneck in Dijkstra's shortest-path algorithm can be avoided~\cite{sssp} is a reminder that sorting-like primitives still shape the best-known bounds for important problems, and that understanding which parts of ordering are really needed is an active research theme.
+
+\paragraph{Gap and scope.}
+Existing work gives (a)~general reversible sorting and (b)~a classical cuboid schedule whose selection ability is explicitly unproved. The gap this project targets is (c)~a verified, selection-specific, clean reversible circuit evaluated against full-sort baselines under restricted connectivity. I have not yet seen such a study, but this is provisional: in weeks 1--3 I will run a systematic literature search (Scopus and Web of Science, with terms such as ``reversible sorting network'', ``quantum comparator circuit'', ``selection network'' and ``uncomputation'', plus forward and backward citations from~\cite{beals,berry}) and record the search terms and results. The project addresses (c) at small scale, with the classical cuboid result as motivation and structural comparison.
+
+%------------------------------------------------------------
+\section{Aims and Objectives}
+
+The aim is to implement, verify and evaluate classical and reversible-quantum order-statistic computation on small cases, and to document clearly the limits of local rearrangement as a selection method.
+
+\textbf{Objectives}
+\begin{enumerate}
+  \item \textbf{Classical reference.} Implement a reference median/$k$-selection and the three-comparator median-of-three network, draw the network, and test it exhaustively (all 64 ordered triples over $\{0,1,2,3\}$), counting comparisons separately from running time.
+  \item \textbf{Cuboid counterexample.} Reproduce the manuscript's $3\times3\times3$ counterexample classically, confirming that it is unchanged by the noiseless schedule and that its median lies outside the central plane, and explain why containing the target in a candidate set does not determine its rank within that set.
+  \item \textbf{Reversible comparator and clean median.} Build a reversible compare-and-exchange gadget (1-bit, then 2-bit) and a clean three-input median oracle with the contract $|X\rangle|Y\rangle|0\rangle \mapsto |X\rangle|Y\oplus \mathrm{median}(X)\rangle|0\rangle$.
+  \item \textbf{Verification.} Verify the oracle at the basis, superposition (phase-sensitive) and inverse levels, and show that deliberately broken circuits are detected.
+  \item \textbf{Resource study.} For larger inputs, where a selection-specific network can differ from a full sort (for example $N=5$, $7$ and $9$ inputs), compare a clean full-sort circuit against an established selection-specific network from the literature, using the same comparator, precision and workspace, and compile both to a line, a square grid and a representative backend topology across several transpiler seeds (an abstract cuboid layout is added only where the sizes make it meaningful). These larger circuits are compiled and counted only, not simulated. The three-input median oracle is the verified baseline, since for $N=3$ sorting and selection both need three comparators.
+  \item \textbf{Report.} Produce a reproducible code repository and a final report that separates verified results from empirical observations and limitations.
+\end{enumerate}
+Objectives 1 to 4 form the core. Objective 5 is the main evaluation.
+
+%------------------------------------------------------------
+\section{Methods}
+
+\paragraph{Overall approach.}
+The project follows the staged order recommended by the supervisor's guide~\cite{guide}: classical baseline, quantum foundations, reversible comparison, clean selection, validation, then resource analysis. Each stage must pass its checks before the next begins.
+
+\paragraph{Environment and reproducibility.}
+Python in a virtual environment with a Git repository; NumPy, Matplotlib, pytest and PennyLane~\cite{pennylane}, adding Qiskit for compilation and transpiler experiments against target coupling maps~\cite{ibm}. Code lives in \texttt{src/}, tests in \texttt{tests/}, notebooks in \texttt{notebooks/}, and results in \texttt{results/}. Package versions, random seeds and experiment settings are recorded. A single command will regenerate the main tables and plots. Register convention: unsigned $b$-bit integers, most significant bit first.
+
+\paragraph{Classical work (Objectives 1--2).}
+\begin{itemize}
+  \item The reference answer is \texttt{sorted(x)[k-1]}; the three-comparator network is tested on every ordered triple, including repeated values, and any failing input is saved.
+  \item The $3\times3\times3$ counterexample (Section~VI-C of~\cite{jiang}) is loaded as a fixed array and checked programmatically: no neighbouring pair along any axis is inverted (so the noiseless schedule leaves it unchanged), its median is 14, and that value lies outside the central plane.
+  \item A short written explanation, using the manuscript's small example of a candidate set that contains the median without the median being its own median ($\{1,\dots,9\}$ with candidate set $\{1,2,5\}$), shows why membership in a candidate set is weaker than rank certification. This also fixes the definition used for even $N$ (lower median).
+\end{itemize}
+
+\paragraph{Quantum work (Objectives 3--5).}
+\begin{itemize}
+  \item Learn and test the needed gates (X, H, CNOT, Toffoli, controlled-SWAP) via truth tables and a Bell-state check.
+  \item Build the 1-bit comparator (flag $f=a\wedge\neg b$, controlled swap), then a 2-bit truth-table comparator, as educational baselines.
+  \item Build the median-of-three oracle using compute $\to$ copy (CNOT the middle register into the output) $\to$ uncompute (inverse of the sorting stage, excluding the output CNOTs). Qubit count is estimated before simulating ($6$ input $+\,2$ output $+\,3$ flag qubits $=11$ before comparator workspace).
+  \item \textbf{Verification.} (1)~Basis: all 64 inputs, with zero and nonzero initial output, checking correct output, restored inputs and zero workspace to tolerance $10^{-10}$. (2)~Superposition: compare against an expected state built independently from the classical truth table, using fidelity with one global phase. (3)~Inverse: oracle followed by adjoint. A written correctness argument will cover the predicate, the exchange gadget, the network and the compute--copy--uncompute step. A deliberately broken circuit (for example omitting an inverse comparator) is used to show the tests catch errors.
+  \item The Python reference may prepare inputs and expected outputs but is never used to supply the median to the circuit.
+  \item \textbf{Resources.} For each circuit I record problem parameters, logical counts (comparators, Toffolis, controlled swaps, qubits, peak ancillas, depth), compiled counts (two-qubit gates, depth, layout, basis gates) and reproducibility fields. Compilation uses identical settings and five fixed transpiler seeds, with the spread reported. Logical and native compiled counts are reported separately.
+  \item \textbf{Memory limits.} A double-precision statevector needs about $16\cdot 2^Q$ bytes, so full simulation is limited to about 24 qubits (about 256~MiB); larger circuits are compiled and counted only.
+\end{itemize}
+
+\paragraph{Justification of choices.}
+Starting with a three-input median keeps the first circuit small enough to simulate exactly and to prove correct, while still exercising every ingredient (reversible comparison, flags, cleanup). Exhaustive tests give strong evidence on small cases, but I will not treat them as a proof for arbitrary bit width.
+
+\paragraph{Ethical and professional considerations.}
+The project involves no human participants or personal data, so no ethics approval is needed. Sources and prior work are cited, the supervisor's manuscript is treated as unpublished and not redistributed, and any use of AI tools will be declared in line with university policy.
+
+\paragraph{Risks and mitigations.}
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.38\textwidth}X@{}}
+\toprule
+\textbf{Risk} & \textbf{Mitigation} \\
+\midrule
+Theory is hard and the supervisor has said the project may be tough & Core objectives are implementation-first and checkable; scope agreed with the supervisor \\
+Quantum background is new to me & Dedicated learning stage; only the gates needed for the next circuit are studied \\
+Falling behind the week-18 draft deadline & 15 h contingency; progress forms at weeks 5, 10, 15; if needed, the backend-topology part of Objective 5 is cut first \\
+Simulation memory limits & Estimate qubits first; use circuit counting for large sizes \\
+Truth-table comparator scales poorly & Use it only as a baseline, then replace it with a verified efficient comparator from the literature \\
+Library API changes (PennyLane/Qiskit) & Pin and record versions \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+%------------------------------------------------------------
+\section{Plan for Analysis}
+
+\begin{itemize}
+  \item \textbf{Correctness:} pass/fail against independent classical references; coverage table of tests; phase-sensitive and broken-circuit tests.
+  \item \textbf{Classical checks:} exhaustive testing on all 64 triples, programmatic verification of the counterexample, and comparison counts recorded separately from running time.
+  \item \textbf{Resource analysis:} curves of logical and compiled costs against $N$ and bit width $b$, for line, grid and backend topologies, with spread across transpiler seeds. Empirical trends are labelled as empirical, and proved bounds are kept separate.
+  \item \textbf{Comparison fairness:} same comparison primitive, precision, target rank, workspace and input--output contract across strategies; differences are reported separately.
+  \item \textbf{Success criteria:} a verified clean median oracle, a reproducible resource study and an honest account of limitations.
+\end{itemize}
+
+%------------------------------------------------------------
+\section{Workplan and Time Plan Mapped to Learning Hours}
+
+The project is worth 40 credits, so the plan assumes 400 learning hours (10 hours per credit) over 21 weeks, about 19 hours a week.
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.27\textwidth}lXr@{}}
+\toprule
+\textbf{Phase} & \textbf{Weeks} & \textbf{Main outcome} & \textbf{Hours} \\
+\midrule
+1. Setup, literature search, proposal & 1--3 & Environment, repo, literature matrix, proposal & 35 \\
+2. Classical reference and counterexample & 4--5 & Exhaustive tests, network drawing, counterexample reproduced & 35 \\
+3. Quantum foundations & 6--7 & Gate truth tables, Bell-state check & 30 \\
+4. Reversible comparator and clean median & 8--10 & 1-bit/2-bit gadgets, median oracle passing basis tests & 65 \\
+5. Verification & 11--12 & Correctness note, phase tests, broken-circuit test & 45 \\
+6. Resource analysis & 13--15 & Compiled counts, resource curves & 65 \\
+7. Draft report & 15--17 & Draft report and code to supervisor & 50 \\
+8. Final report, handover and viva preparation & 18--21 & Revised report, README, regenerate-all script & 60 \\
+Contingency & spread & Absorbs slippage in any phase & 15 \\
+\midrule
+\textbf{Total} & & & \textbf{400} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{Milestones.} Proposal (week 3); progress forms at the end of weeks 5, 10 and 15; classical reference, counterexample and first literature matrix by week 5; clean median oracle passing basis tests by week 10; all verification checks by week 12; resource curves by week 15; \textbf{draft report due at the start of week 18}; \textbf{final report and code due at the end of week 21}, followed by the viva. I will meet Dr Jiang weekly, bringing one result, one explanation and one open question each time, as the guide suggests.
+
+\paragraph{Resources required.} Computer with Python; free software (PennyLane, Qiskit, NumPy, pytest, Matplotlib); access to the supervisor's manuscript and the university library for papers.
+
+%------------------------------------------------------------
+\section{BCS Accreditation}
+
+This project meets BCS accreditation expectations for an individual, substantial piece of computing work by requiring me to: analyse a non-trivial problem and place it in the context of the research literature; specify, design, implement and test software artefacts (reference selection code and verified quantum circuits) using appropriate tools; evaluate results critically against baselines with stated assumptions and limitations; plan and manage a project over time with milestones and risk control; apply professional practice (version control, reproducibility, correct attribution and ethics); and communicate the work in a written report and a viva.
+
+%------------------------------------------------------------
+\begin{thebibliography}{99}
+
+\bibitem{hoare62} C.~A.~R. Hoare, ``Quicksort,'' \emph{The Computer Journal}, vol.~5, no.~1, pp.~10--16, 1962.
+
+\bibitem{hoare61} C.~A.~R. Hoare, ``Algorithm 65: Find,'' \emph{Communications of the ACM}, vol.~4, no.~7, p.~321, 1961.
+
+\bibitem{bfprt} M.~Blum, R.~W. Floyd, V.~Pratt, R.~L. Rivest and R.~E. Tarjan, ``Time bounds for selection,'' \emph{Journal of Computer and System Sciences}, vol.~7, no.~4, pp.~448--461, 1973.
+
+\bibitem{batcher} K.~E. Batcher, ``Sorting networks and their applications,'' in \emph{Proc.\ AFIPS Spring Joint Computer Conference}, pp.~307--314, 1968.
+
+\bibitem{knuth} D.~E. Knuth, \emph{The Art of Computer Programming, Vol.~3: Sorting and Searching}, 2nd ed., Addison-Wesley, 1998.
+
+\bibitem{habermann} A.~N. Habermann, ``Parallel neighbor sort (or the glory of the induction principle),'' Tech.\ Rep.\ AD-759 248, Carnegie Mellon University, 1972.
+
+\bibitem{jiang} R.~Jiang, ``Cuboid Comparison Networks: Resource Bounds and Rank Localization,'' unpublished manuscript supplied by the supervisor, Lancaster University, 2026.
+
+\bibitem{guide} ``Quantum selection circuits: a step by step undergraduate research guide,'' student research guide supplied by the supervisor, 2026.
+
+\bibitem{leighton} F.~T. Leighton, \emph{Introduction to Parallel Algorithms and Architectures}, Morgan Kaufmann, 1992.
+
+\bibitem{beals} R.~Beals, S.~Brierley, O.~Gray, A.~W. Harrow, S.~Kutin, N.~Linden, D.~Shepherd and M.~Stather, ``Efficient distributed quantum computing,'' \emph{Proceedings of the Royal Society A}, vol.~469, no.~2153, 20120686, 2013.
+
+\bibitem{berry} D.~W. Berry et al., ``Improved techniques for preparing eigenstates of fermionic Hamiltonians,'' \emph{npj Quantum Information}, vol.~4, art.~22, 2018.
+
+\bibitem{sssp} R.~Duan, J.~Mao, X.~Mao, X.~Shu and L.~Yin, ``Breaking the Sorting Barrier for Directed Single-Source Shortest Paths,'' in \emph{Proc.\ 57th Annual ACM Symposium on Theory of Computing (STOC)}, 2025. \url{https://dl.acm.org/doi/pdf/10.1145/3717823.3718179}
+
+\bibitem{pennylane} PennyLane documentation, ``Quantum circuits.'' \url{https://docs.pennylane.ai/en/stable/introduction/circuits.html}
+
+\bibitem{ibm} IBM Quantum documentation, ``Represent quantum computers for the transpiler.'' \url{https://quantum.cloud.ibm.com/docs/en/guides/represent-quantum-computers}
+
+\end{thebibliography}
+
+\end{document}
